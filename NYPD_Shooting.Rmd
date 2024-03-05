@@ -1,0 +1,259 @@
+---
+title: "NYPD_Shooting"
+author: "Angel Ajcabul"
+date: "2024-03-05"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## About the data
+The dataset contains a list of every shooting incident that occurred in New York City (NYC) dating back to 2006 up to the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record in the dataset represents a shooting incident in NYC and includes information about the event, such as the location and time of occurrence. Additionally, demographic information related to suspects and victims is also included. The dataset is intended for public use to explore the nature of shooting and criminal activity in NYC. For additional information about the dataset, please refer to the attached data footnotes
+
+### Import libraries
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+### Import data
+
+```{r setupdata, message=FALSE}
+data <- read_csv("NYPD_Shooting_Incident_Data__Historic_ (2).csv")
+head(data)
+```
+
+### Cleaning data
+Now, we are going to use specific data
+
+```{r clean, message=FALSE}
+data_s <- data %>% select(c(INCIDENT_KEY, OCCUR_DATE, BORO, STATISTICAL_MURDER_FLAG, VIC_AGE_GROUP, VIC_SEX))
+data_s$OCCUR_DATE <- as.Date(data_s$OCCUR_DATE, format = "%m/%d/%Y")
+summary(data_s)
+
+```
+### Events by region
+
+```{r clean2, message=FALSE}
+data_s <- data_s %>% 
+  group_by(OCCUR_DATE, BORO, STATISTICAL_MURDER_FLAG, VIC_AGE_GROUP, VIC_SEX) %>% 
+  summarise(count = n_distinct(as.character(INCIDENT_KEY)))
+```
+
+### Visual analysis
+In general, a higher number of events is observed in the age group of 25 to 44 years old, with Brooklyn and Bronx being the places with the highest frequency. It can be noted that there are values that do not have a correct age label, so they were removed from the analyzed dataset.
+```{r clean3, message=FALSE}
+heatmap_data <- data %>%
+  filter(VIC_AGE_GROUP != 'UNKNOWN' & VIC_AGE_GROUP != '1022') %>%
+  group_by(BORO, VIC_AGE_GROUP) %>%
+  summarise(incident_count = n_distinct(INCIDENT_KEY))
+
+
+ggplot(heatmap_data, aes(x = VIC_AGE_GROUP, y = BORO, fill = incident_count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Incident Count") +
+  labs(x = "Age Group", y = "BORO", title = "Heatmap of Incident Count by BORO and Age Group") +
+  theme_minimal()
+```
+## Events by sex
+Now we will examine the events at a general level, separated by gender. A higher number of cases is observed in males, more than 90%.
+
+```{r clean4, message=FALSE, echo = FALSE}
+
+sex_prop <- data %>%
+  group_by(VIC_SEX) %>%
+  summarise(event_count = n()) %>%
+  mutate(proportion = event_count / sum(event_count))
+
+ggplot(sex_prop, aes(x = VIC_SEX, y = proportion, fill = VIC_SEX)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(round(proportion * 100, 2), "%")), vjust = -0.5) +
+  labs(x = "Sex", y = "Proportion of Events", title = "Proportion of Events by Sex") +
+  theme_void()
+
+
+```
+
+
+## Relationship No Murder Events vs Murder events
+
+And finally, we want to see the relationship between the number of events involving murder and those that do not
+
+```{r clean5, message=FALSE, echo = FALSE}
+
+
+non_murder_events <- data %>%
+  filter(STATISTICAL_MURDER_FLAG == FALSE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(non_murder_count = n())
+
+
+murder_events <- data %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(murder_count = n())
+
+
+combined_data <- full_join(non_murder_events, murder_events, by = "OCCUR_DATE")
+
+
+combined_data[is.na(combined_data)] <- 0
+
+
+ggplot(combined_data, aes(x = non_murder_count, y = murder_count)) +
+  geom_point() +
+  labs(x = "Non-Murder Events", y = "Murder Events", title = "Scatterplot of Events by Murder Status")
+
+```
+
+
+### Separate by BORO
+Let's add some color to the graph, separate it by BORO to have a better perspective.
+
+
+
+```{r clean6, message=FALSE, echo= FALSE, warning = FALSE}
+
+
+non_murder_events <- data %>%
+  filter(STATISTICAL_MURDER_FLAG == FALSE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(non_murder_count = n())
+
+
+murder_events <- data %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(murder_count = n())
+
+
+combined_data <- full_join(non_murder_events, murder_events, by = "OCCUR_DATE")
+
+combined_data[is.na(combined_data)] <- 0
+
+combined_data <- merge(combined_data, data[, c("OCCUR_DATE", "BORO")], by = "OCCUR_DATE", all.x = TRUE)
+
+ggplot(combined_data, aes(x = non_murder_count, y = murder_count, color = BORO)) +
+  geom_point() +
+  labs(x = "Non-Murder Events", y = "Murder Events", title = "Scatterplot of Events by Murder Status")
+  theme_minimal()
+
+  
+  
+```
+
+### Focus on one BORO
+
+The previous analysis allows us to identify that only some places are prone to have a higher number of events and murders. In this code, we will specifically focus on Brooklyn, which, as we saw, concentrates the highest number of cases in males.In this graph, we will see the relationship between the events that do not include a death versus the events that include a death or murder.
+
+```{r clean7, message=FALSE}
+
+brooklyn_25_44 <- data %>%
+  filter(BORO == "BROOKLYN")
+
+non_murder_events <- brooklyn_25_44 %>%
+  filter(STATISTICAL_MURDER_FLAG == FALSE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(non_murder_count = n())
+
+murder_events <- brooklyn_25_44 %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(murder_count = n())
+
+combined_data <- full_join(non_murder_events, murder_events, by = "OCCUR_DATE")
+
+
+combined_data[is.na(combined_data)] <- 0
+
+combined_data <- merge(combined_data, brooklyn_25_44[, c("OCCUR_DATE", "BORO")], by = "OCCUR_DATE", all.x = TRUE)
+
+
+ggplot(combined_data, aes(x = non_murder_count, y = murder_count, color = BORO)) +
+  geom_point() +
+  labs(x = "Non-Murder Events", y = "Murder Events", title = "Scatterplot of Events in Brooklyn") +
+  theme_minimal()
+
+
+```
+
+
+### Relationship between total number of events vs murders
+Now let's be more specific. Let's examine the relationship between the total number of events and the number of murders. This will allow us to identify a pattern in the data, after which we can make a prediction with a linear model.
+
+
+
+```{r clean8, message=FALSE}
+
+brooklyn <- data %>%
+  filter(BORO == "BROOKLYN")
+
+
+total_events <- brooklyn %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(total_count = n())
+
+
+murder_events <- brooklyn %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(murder_count = n())
+
+combined_data <- full_join(total_events, murder_events, by = "OCCUR_DATE")
+
+combined_data[is.na(combined_data)] <- 0
+
+combined_data <- merge(combined_data, brooklyn_25_44[, c("OCCUR_DATE", "BORO")], by = "OCCUR_DATE", all.x = TRUE)
+
+
+ggplot(combined_data, aes(x = total_count, y = murder_count, color = BORO)) +
+  geom_point() +
+  labs(x = "Total Events", y = "Murder Events", title = "Scatterplot of Events by Murder Status") +
+  theme_minimal()+geom_smooth(method = lm)
+
+
+```
+
+
+### Linear model
+Now, we can plot the linear model.
+
+
+
+```{r clean10, message=FALSE}
+
+
+combined_data[is.na(combined_data)] <- 0
+
+model <- lm(murder_count ~ total_count, data = combined_data)
+
+combined_data_pred <- combined_data %>%  mutate(pred = predict(model))
+
+
+ggplot(combined_data_pred) +
+  geom_point(aes(x = total_count, y = murder_count), color = "#0057c9") +
+  geom_point(aes(x = total_count, y = pred), color = "#cf3700") +
+  geom_smooth(method = "lm", se = FALSE, aes(y = pred, x= total_count), color = "#cf3700") +  # Agregar la línea de regresión
+  labs(x = "Total Events", y = "Murder Events", title = "Scatterplot of Events and Predictions by Murder Status") +
+  theme_minimal()
+```
+
+
+## Finally, this is the final model and its parameters
+
+The linear regression model that was fitted to the data suggests that there is a statistically significant relationship between the total count of events and the count of murders. The estimated regression equation is:
+
+\[ \text{Murder Count} = -0.344916 + 0.300033 \times \text{Total Count} \]
+
+This implies that for each additional event, the murder count is expected to increase by approximately 0.300033, holding all other variables constant. The model has a high statistical significance, with a very low p-value (< 2.2e-16), indicating that the relationship between the total count and murder count is not due to random chance. The \( R^2 \) value of 0.4834 suggests that approximately 48.34% of the variability in murder count can be explained by the total count of events, indicating a moderate level of explanatory power.
+
+```{r clean11, message=FALSE}
+summary(model)
+```
+
+
+### Considerations and BIAS
+
+In the analysis of shooting incidents, it is crucial to consider various biases that could influence the results. One of the most evident biases could be the underreporting of incidents, where some events might not be reported, leading to an underestimation of the true magnitude of the problem. Additionally, data availability could be biased towards certain geographical areas or demographic groups, which could distort the full picture of gun violence in a particular region. It is also important to consider any bias in data collection and classification, as well as possible implicit biases in the analysis itself, which could influence the conclusions drawn. Recognizing and addressing these biases is essential to obtain a more comprehensive and accurate understanding of the situation of shootings and their social implications.
+
+As for the analysis, some considerations include excluding data that does not make sense or are outliers, and categorizing null records.
